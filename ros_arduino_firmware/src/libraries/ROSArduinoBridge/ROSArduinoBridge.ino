@@ -45,8 +45,8 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-#define USE_BASE      // Enable the base controller code
-//#undef USE_BASE     // Disable the base controller code
+//#define USE_BASE      // Enable the base controller code
+#undef USE_BASE     // Disable the base controller code
 
 /* Define the motor controller and encoder library you are using */
 #ifdef USE_BASE
@@ -58,10 +58,13 @@
 
    /* The RoboGaia encoder shield */
    #define ROBOGAIA
+   
+   /* Encoders directly attached to Arduino board */
+   //#define ARDUINO_ENC_COUNTER
 #endif
 
-//#define USE_SERVOS  // Enable use of PWM servos as defined in servos.h
-#undef USE_SERVOS     // Disable use of PWM servos
+#define USE_SERVOS  // Enable use of PWM servos as defined in servos.h
+//#undef USE_SERVOS     // Disable use of PWM servos
 
 /* Serial port baud rate */
 #define BAUDRATE     57600
@@ -181,11 +184,11 @@ int runCommand() {
     break;
 #ifdef USE_SERVOS
   case SERVO_WRITE:
-    servos[arg1].write(arg2);
+    servos[arg1].setTargetPosition(arg2);
     Serial.println("OK");
     break;
   case SERVO_READ:
-    Serial.println(servos[arg1].read());
+    Serial.println(servos[arg1].getServo().read());
     break;
 #endif
     
@@ -236,17 +239,41 @@ void setup() {
 
 // Initialize the motor controller if used */
 #ifdef USE_BASE
+  #ifdef ARDUINO_ENC_COUNTER
+    //set as inputs
+    DDRD &= ~(1<<LEFT_ENC_PIN_A);
+    DDRD &= ~(1<<LEFT_ENC_PIN_B);
+    DDRC &= ~(1<<RIGHT_ENC_PIN_A);
+    DDRC &= ~(1<<RIGHT_ENC_PIN_B);
+    
+    //enable pull up resistors
+    PORTD |= (1<<LEFT_ENC_PIN_A);
+    PORTD |= (1<<LEFT_ENC_PIN_B);
+    PORTC |= (1<<RIGHT_ENC_PIN_A);
+    PORTC |= (1<<RIGHT_ENC_PIN_B);
+    
+    // tell pin change mask to listen to left encoder pins
+    PCMSK2 |= (1 << LEFT_ENC_PIN_A)|(1 << LEFT_ENC_PIN_B);
+    // tell pin change mask to listen to right encoder pins
+    PCMSK1 |= (1 << RIGHT_ENC_PIN_A)|(1 << RIGHT_ENC_PIN_B);
+    
+    // enable PCINT1 and PCINT2 interrupt in the general interrupt mask
+    PCICR |= (1 << PCIE1) | (1 << PCIE2);
+  #endif
   initMotorController();
   resetPID();
 #endif
 
 /* Attach servos if used */
-#ifdef USE_SERVOS
-  int i;
-  for (i = 0; i < N_SERVOS; i++) {
-    servos[i].attach(servoPins[i]);
-  }
-#endif
+  #ifdef USE_SERVOS
+    int i;
+    for (i = 0; i < N_SERVOS; i++) {
+      servos[i].initServo(
+          servoPins[i],
+          stepDelay[i],
+          servoInitPosition[i]);
+    }
+  #endif
 }
 
 /* Enter the main loop.  Read and parse input from the serial port
@@ -306,12 +333,14 @@ void loop() {
     setMotorSpeeds(0, 0);
     moving = 0;
   }
+#endif
 
+// Sweep servos
+#ifdef USE_SERVOS
+  int i;
+  for (i = 0; i < N_SERVOS; i++) {
+    servos[i].doSweep();
+  }
 #endif
 }
-
-
-
-
-
 

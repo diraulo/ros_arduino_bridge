@@ -1,6 +1,6 @@
 Overview
 --------
-This branch (groovy-devel) is intended for ROS Groovy, and uses the rosmake buildsystem. For a catkin version, please see the hydro-devel branch.
+This branch (hydro-devel) is intended for ROS Hydro and above, and uses the Catkin buildsystem. It may also be compatible with ROS Groovy.
 
 This ROS stack includes an Arduino library (called ROSArduinoBridge) and a collection of ROS packages for controlling an Arduino-based robot using standard ROS messages and services.  The stack does **not** depend on ROS Serial.
 
@@ -23,9 +23,9 @@ the PC. The base controller requires the use of a motor controller and encoders 
 * Pololu VNH5019 dual motor controller shield (http://www.pololu.com/catalog/product/2502) or Pololu MC33926 dual motor shield (http://www.pololu.com/catalog/product/2503).
 
 * Robogaia Mega Encoder shield
-(http://www.robogaia.com/two-axis-encoder-counter-mega-shield-version-2.html).
+(http://www.robogaia.com/two-axis-encoder-counter-mega-shield-version-2.html) or on-board wheel encoder counters.
 
-**NOTE:** The Robogaia Mega Encoder shield can only be used with an Arduino Mega.
+**NOTE:** The Robogaia Mega Encoder shield can only be used with an Arduino Mega. The on-board wheel encoder counters are currently only supported by Arduino Uno.
 
 * The library can be easily extended to include support for other motor controllers and encoder hardware or libraries.
 
@@ -77,7 +77,7 @@ Your Arduino will likely connect to your Linux computer as port /dev/ttyACM# or 
 
     $ ls /dev/ttyACM*
 
-or 
+or
 
     $ ls /dev/ttyUSB*
 
@@ -103,15 +103,15 @@ When you log back in again, try the command:
 
     $ groups
 
-and you should see a list of groups you belong to including dialout. 
+and you should see a list of groups you belong to including dialout.
 
 Installation of the ros\_arduino\_bridge Stack
 ----------------------------------------------
 
-    $ cd ~/ros_workspace
+    $ cd ~/catkin_workspace/src
     $ git clone https://github.com/hbrobotics/ros_arduino_bridge.git
-    $ cd ros_arduino_bridge
-    $ rosmake
+    $ cd ~/catkin_workspace
+    $ catkin_make
 
 The provided Arduino library is called ROSArduinoBridge and is
 located in the ros\_arduino\_firmware package.  This sketch is
@@ -140,7 +140,7 @@ Loading the ROSArduinoBridge Sketch
   You should be able to find it by going to:
 
     File->Sketchbook->ROSArduinoBridge
-  
+
 NOTE: If you don't have the required base controller hardware but
 still want to try the code, see the notes at the end of the file.
 
@@ -430,13 +430,38 @@ where pin is the pin number and value is 0 for LOW and 1 for HIGH.
 
     $ rosservice call /arduino/servo_write id pos
 
-where id is the index of the servo as defined in the Arduino sketch (servos.h) and pos is the position in degrees (0 - 180).
+where id is the index of the servo as defined in the Arduino sketch (servos.h) and pos is the position in radians (0 - 3.14).
 
 **servo\_read** - read the position of a servo
 
     $ rosservice call /arduino/servo_read id
 
 where id is the index of the servo as defined in the Arduino sketch (servos.h)
+
+Using the on-board wheel encoder counters (Arduino Uno only)
+------------------------------------------------------------
+The firmware supports on-board wheel encoder counters for Arduino Uno.
+This allows connecting wheel encoders directly to the Arduino board, without the need for any additional wheel encoder counter equipment (such as a RoboGaia encoder shield).
+
+For speed, the code is directly addressing specific Atmega328p ports and interrupts, making this implementation Atmega328p (Arduino Uno) dependent. (It should be easy to adapt for other boards/AVR chips though.)
+
+To use the on-board wheel encoder counters, connect your wheel encoders to Arduino Uno as follows:
+
+    Left wheel encoder A output -- Arduino UNO pin 2
+    Left wheel encoder B output -- Arduino UNO pin 3
+
+    Right wheel encoder A output -- Arduino UNO pin A4
+    Right wheel encoder B output -- Arduino UNO pin A5
+
+Make the following changes in the ROSArduinoBridge sketch to disable the RoboGaia encoder shield, and enable the on-board one:
+
+    /* The RoboGaia encoder shield */
+    //#define ROBOGAIA
+    /* Encoders directly attached to Arduino board */
+    #define ARDUINO_ENC_COUNTER
+
+Compile the changes and upload to your controller.
+
 
 NOTES
 -----

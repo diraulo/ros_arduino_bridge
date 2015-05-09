@@ -15,16 +15,15 @@
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details at:
-    
+
     http://www.gnu.org/licenses/gpl.html
 """
 
-import roslib; roslib.load_manifest('ros_arduino_python')
 import rospy
-from arduino_driver import Arduino
-from arduino_sensors import *
+from ros_arduino_python.arduino_driver import Arduino
+from ros_arduino_python.arduino_sensors import *
 from ros_arduino_msgs.srv import *
-from base_controller import BaseController
+from ros_arduino_python.base_controller import BaseController
 from geometry_msgs.msg import Twist
 import os, time
 import thread
@@ -39,6 +38,7 @@ class ArduinoROS():
         self.port = rospy.get_param("~port", "/dev/ttyACM0")
         self.baud = int(rospy.get_param("~baud", 57600))
         self.timeout = rospy.get_param("~timeout", 0.5)
+        self.base_frame = rospy.get_param("~base_frame", 'base_link')
 
         # Overall loop rate: should be faster than fastest sensor rate
         self.rate = int(rospy.get_param("~rate", 50))
@@ -59,11 +59,11 @@ class ArduinoROS():
         self.cmd_vel = Twist()
 
         # A cmd_vel publisher so we can stop the robot when shutting down
-        self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist)
+        self.cmd_vel_pub = rospy.Publisher('cmd_vel', Twist, queue_size=5)
 
         # The SensorState publisher periodically publishes the values of all sensors on
         # a single topic.
-        self.sensorStatePub = rospy.Publisher('~sensor_state', SensorState)
+        self.sensorStatePub = rospy.Publisher('~sensor_state', SensorState, queue_size=5)
 
         # A service to position a PWM servo
         rospy.Service('~servo_write', ServoWrite, self.ServoWriteHandler)
@@ -77,7 +77,10 @@ class ArduinoROS():
         # A service to turn a digital sensor on or off
         rospy.Service('~digital_write', DigitalWrite, self.DigitalWriteHandler)
 
-        # Initialize the controlller
+	# A service to set pwm values for the pins
+	rospy.Service('~analog_write', AnalogWrite, self.AnalogWriteHandler)
+
+	# Initialize the controlller
         self.controller = Arduino(self.port, self.baud, self.timeout)
 
         # Make the connection
@@ -101,19 +104,19 @@ class ArduinoROS():
                 params['direction'] = 'input'
 
             if params['type'] == "Ping":
-                sensor = Ping(self.controller, name, params['pin'], params['rate'])
+                sensor = Ping(self.controller, name, params['pin'], params['rate'], self.base_frame)
             elif params['type'] == "GP2D12":
-                sensor = GP2D12(self.controller, name, params['pin'], params['rate'])
+                sensor = GP2D12(self.controller, name, params['pin'], params['rate'], self.base_frame)
             elif params['type'] == 'Digital':
-                sensor = DigitalSensor(self.controller, name, params['pin'], params['rate'], direction=params['direction'])
+                sensor = DigitalSensor(self.controller, name, params['pin'], params['rate'], self.base_frame, direction=params['direction'])
             elif params['type'] == 'Analog':
-                sensor = AnalogSensor(self.controller, name, params['pin'], params['rate'], direction=params['direction'])
+                sensor = AnalogSensor(self.controller, name, params['pin'], params['rate'], self.base_frame, direction=params['direction'])
             elif params['type'] == 'PololuMotorCurrent':
-                sensor = PololuMotorCurrent(self.controller, name, params['pin'], params['rate'])
+                sensor = PololuMotorCurrent(self.controller, name, params['pin'], params['rate'], self.base_frame)
             elif params['type'] == 'PhidgetsVoltage':
-                sensor = PhidgetsVoltage(self.controller, name, params['pin'], params['rate'])
+                sensor = PhidgetsVoltage(self.controller, name, params['pin'], params['rate'], self.base_frame)
             elif params['type'] == 'PhidgetsCurrent':
-                sensor = PhidgetsCurrent(self.controller, name, params['pin'], params['rate'])
+                sensor = PhidgetsCurrent(self.controller, name, params['pin'], params['rate'], self.base_frame)
 
 #                if params['type'] == "MaxEZ1":
 #                    self.sensors[len(self.sensors)]['trigger_pin'] = params['trigger_pin']
@@ -124,7 +127,7 @@ class ArduinoROS():
 
         # Initialize the base controller if used
         if self.use_base_controller:
-            self.myBaseController = BaseController(self.controller)
+            self.myBaseController = BaseController(self.controller, self.base_frame)
 
         # Start polling the sensors and base controller
         while not rospy.is_shutdown():
@@ -143,7 +146,7 @@ class ArduinoROS():
 
             if now > self.t_next_sensors:
                 msg = SensorState()
-                msg.header.frame_id = 'base_link'
+                msg.header.frame_id = self.base_frame
                 msg.header.stamp = now
                 for i in range(len(self.mySensors)):
                     msg.name.append(self.mySensors[i].name)
@@ -173,6 +176,10 @@ class ArduinoROS():
     def DigitalWriteHandler(self, req):
         self.controller.digital_write(req.pin, req.value)
         return DigitalWriteResponse()
+
+    def AnalogWriteHandler(self, req):
+        self.controller.analog_write(req.pin, req.value)
+        return AnalogWriteResponse()
 
     def shutdown(self):
         # Stop the robot
